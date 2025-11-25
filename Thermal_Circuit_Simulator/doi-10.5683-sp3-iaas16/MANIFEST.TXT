@@ -1,0 +1,6 @@
+Readme.pdf (application/pdf) 342845 bytes.
+Dataset of weighing station temperature measurements.xlsx (application/vnd.openxmlformats-officedocument.spreadsheetml.sheet) 57951027 bytes.
+Dataset of weighing station temperature measurements.csv (text/csv) 49033024 bytes.
+Picture 1.jpg (image/jpeg) 3629163 bytes.
+Picture 3.jpg (image/jpeg) 2752457 bytes.
+Picture 2.jpg (image/jpeg) 3188914 bytes.
