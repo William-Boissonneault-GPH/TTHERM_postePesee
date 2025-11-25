@@ -9,6 +9,7 @@ class ThermalCircuit:
     def __init__(self):
         self.capacitances = []
         self.resistances = {}
+        self.heated_nodes = []
         self.n_nodes = 0
 
     # Add a thermal node with its capacitance
@@ -32,11 +33,8 @@ class ThermalCircuit:
         self.resistances[(i, j)] = R
         self.resistances[(j, i)] = R  # symmetric
 
-    # # TODO
-    # def set_heated_node(self, node_index, q, condition=lambda t: True):
-    #     if not hasattr(self, 'heated_nodes'):
-    #         self.heated_nodes = {}
-    #     self.heated_nodes[node_index] = (q, condition)
+    def add_heated_node(self, node_index, q, condition=lambda t, T: True):
+        self.heated_nodes.append((node_index, q, condition))
 
     # Build G (conductance matrix) and C (capacitance diag)
     def build_matrices(self):
@@ -83,6 +81,12 @@ class ThermalCircuit:
         print('Beginning simulation...')
         for n in range(N_steps):
             dT = C_inv @ (-G @ T[n, :])
+
+            # Inject heat if condition is met
+            for heated_node_index, heating_power, heating_condition in self.heated_nodes:
+                if heating_condition(time[n], T[n, :]):
+                    dT[heated_node_index] += heating_power / self.capacitances[heated_node_index]
+
             T[n+1, :] = T[n, :] + dt * dT
             # Update outdoor node
             if outdoor_temp_full is not None:
@@ -91,7 +95,7 @@ class ThermalCircuit:
         # Return both T and time vector
         return T, time
     
-    def show_temperature_graph(self, T, time, dates_axis=None):
+    def show_temperature_graph(self, T, time, dates_axis=None, compare_with_experimental=True):
         plt.figure(figsize=(8, 5))
         for i in range(self.n_nodes):
             plt.plot(time, T[:, i], label=f"Node {i}")
@@ -102,6 +106,8 @@ class ThermalCircuit:
             plt.xlabel("Time (dates)")
         else:
             plt.xlabel("Time (seconds)")
+        if compare_with_experimental:
+            plt.plot(time, self.measurement_data_df["Total_Average"], color='red', linestyle='-', label="Experimental Average")
         plt.ylabel("Temperature (°C)")
         plt.title("Temperature Evolution of Thermal Nodes")
         plt.grid(True)
@@ -109,14 +115,30 @@ class ThermalCircuit:
         plt.tight_layout()
         plt.show()
 
-def get_experimental_data():
-    script_directory = os.path.dirname(os.path.abspath(__file__))
-    irl_data_path = os.path.join(script_directory, "doi-10.5683-sp3-iaas16", "Dataset of weighing station temperature measurements.csv")
-    measurement_data_df = pd.read_csv(irl_data_path, sep=';')
-    outdoor_temperature_data = measurement_data_df['Outdoor temperature [deg. C]'].to_list()
-    simulation_time_in_dates = pd.to_datetime(measurement_data_df['Time'].to_list())
-    simulation_time = (simulation_time_in_dates - simulation_time_in_dates[0]).total_seconds()  # Convert to absolute seconds
-    return outdoor_temperature_data, simulation_time_in_dates, simulation_time
+    def get_experimental_data(self):
+        script_directory = os.path.dirname(os.path.abspath(__file__))
+        irl_data_path = os.path.join(script_directory, "doi-10.5683-sp3-iaas16", "Dataset of weighing station temperature measurements.csv")
+        measurement_data_df = pd.read_csv(irl_data_path, sep=';')
+        outdoor_temperature_data = measurement_data_df['Outdoor temperature [deg. C]'].to_list()
+        simulation_time_in_dates = pd.to_datetime(measurement_data_df['Time'].to_list())
+        simulation_time = (simulation_time_in_dates - simulation_time_in_dates[0]).total_seconds()  # Convert to absolute seconds
+
+        low_cols = [col for col in measurement_data_df.columns if "T[degC]-Low" in col]
+        mid_cols = [col for col in measurement_data_df.columns if "T[degC]-Mid" in col]
+        top_cols = [col for col in measurement_data_df.columns if "T[degC]-Top" in col]
+
+        measurement_data_df["Low_avg"] = measurement_data_df[low_cols].mean(axis=1)
+        measurement_data_df["Mid_avg"] = measurement_data_df[mid_cols].mean(axis=1)
+        measurement_data_df["Top_avg"] = measurement_data_df[top_cols].mean(axis=1)
+
+        weighted_total_average = (
+            0.35 * measurement_data_df["Low_avg"] +
+            0.23 * measurement_data_df["Mid_avg"] +
+            0.411 * measurement_data_df["Top_avg"]
+        )
+        measurement_data_df["Total_Average"] = weighted_total_average
+
+        return outdoor_temperature_data, simulation_time_in_dates, simulation_time, measurement_data_df
     
     
 # Exemple de Circuit
@@ -124,28 +146,25 @@ if __name__ == "__main__":
     tc = ThermalCircuit()
 
     # Get experimental data from CSV
-    outdoor_temperature_data, simulation_time_in_dates, simulation_time = get_experimental_data
+    outdoor_temperature_data, simulation_time_in_dates, simulation_time, tc.measurement_data_df = tc.get_experimental_data()
 
-    # Add les nodes(avec les Capacitances en [J/K])
-    n0 = tc.add_node(C=34400)
-    n1 = tc.add_node(C=4.2*10**6)
-    n2 = tc.add_node(C=4.2*10**6)
-    n3 = tc.set_outdoor_node(simulation_time, outdoor_temperature_data)
+    # Add les nodes avec les Capacitances en [J/K]
+    n0_air = tc.add_node(C=34400) # AIR
+    n1_beton = tc.add_node(C=4.2*10**5) # BETON
+    n2_outdoor = tc.set_outdoor_node(simulation_time, outdoor_temperature_data) # OUTDOOR
 
-    # Set les resistances entre les nodes(en [K/W])
-    tc.set_resistance(n0, n1, R=0.125)
-    tc.set_resistance(n0, n2, R=0.125)
-    tc.set_resistance(n0, n3, R=0.055)
+    # Set les resistances entre les nodes en [K/W]
+    tc.set_resistance(n0_air, n1_beton, R=0.125)
+    tc.set_resistance(n0_air, n2_outdoor, R=0.055)
 
-    # Heated nodes Get q injected if conditions are True
-    # tc.set_heated_node(n0, q, condition=lambda t: (< 5.0)) TODO
+    # Les heated node gets q[W] injected si la condition is True
+    tc.add_heated_node(n0_air, q=100, condition=lambda t, T: (T[n0_air] < 3) and (t > 0) and (t < 3000000))
+    tc.add_heated_node(n0_air, q=100, condition=lambda t, T: (T[n0_air] < 3) and (t > 3500000))
 
-    # Températures initiales # TODO Set from simulation data
-    T0 = np.zeros(tc.n_nodes)
-    T0[n0] = 100.0  # Node 0 starts at 100°C
-    T0[n1] = 20.0   # Node 1 starts at 20°C
-    T0[n2] = 50.0   # Node 2 starts at 50°C
-    T0[n3] = outdoor_temperature_data[0]  # Outdoor node initial temperature
+    # Températures initiales set at experimental data Air average at t=0
+    initial_avg = tc.measurement_data_df["Total_Average"][0]
+    T0 = np.full(tc.n_nodes, initial_avg)
+    T0[n2_outdoor] = outdoor_temperature_data[0]  # Outdoor node initial temperature
 
     # Simulation(en secondes)
     dt = 120 # 2 min en secondes
@@ -154,5 +173,3 @@ if __name__ == "__main__":
 
     # Graphe de la simu
     tc.show_temperature_graph(simulation_temperature_matrix, simulation_time, dates_axis = simulation_time_in_dates)
-    # tc.compare_with_experimental_data(simulation_temperature_matrix, simulation_time, ...)  # TODO
-    # TODO Sortir la diference de Tair mais Tair data doit etre pondere avec le bon volume
