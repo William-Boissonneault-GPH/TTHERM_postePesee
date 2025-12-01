@@ -122,7 +122,7 @@ class ThermalCircuit:
         return C, G, G_fan_on
     
     # Simulate with explicit Euler
-    def simulate(self, T0=None, dt=120, total_time=108094*60):
+    def simulate(self, T0=None, dt=50, total_time=108094*60):
         """
         Simule la température des nodes dans le circuit thermique en bonds de 2 minutes.
         T0: Initial temperature vector [°C]. If None, uses experimental data average at t=0.
@@ -226,7 +226,7 @@ if __name__ == "__main__":
     node_exterieur = tc.add_outdoor_node()
     node_sol_bottom = tc.add_outdoor_node()
     node_sol_side = tc.add_outdoor_node()
-    node_isolant_side = tc.add_node(C=42411)#ADDED C ne 0 
+    node_isolant_side = tc.add_node(C=2176717.4)#ADDED C ne 0 
     node_beton_side = tc.add_node(C=1.109*10**8)
     node_air = tc.add_node(C=200000, name="Air Intérieur")
     node_beton_sol = tc.add_node(C=1.1379*10**8)
