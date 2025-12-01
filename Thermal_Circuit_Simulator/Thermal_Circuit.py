@@ -122,7 +122,7 @@ class ThermalCircuit:
         return C, G, G_fan_on
     
     # Simulate with explicit Euler
-    def simulate(self, T0=None, dt=50, total_time=108094*60):
+    def simulate(self, T0=None, dt=120, total_time=108094*60):
         """
         Simule la température des nodes dans le circuit thermique en bonds de 2 minutes.
         T0: Initial temperature vector [°C]. If None, uses experimental data average at t=0.
@@ -181,6 +181,10 @@ class ThermalCircuit:
         # Last step: copy heater state
         heater_on[-1] = heater_on[-2]
 
+        # Compute Heater On Time
+        dt = time[1] - time[0]  # infer dt from returned data
+        total_on_time = np.sum(heater_on) * dt
+        print(f"Heater ON time = {total_on_time/3600:.2f} hours")
         # Return both T and time vector
         return T, time, heater_on
     
@@ -207,6 +211,11 @@ class ThermalCircuit:
             plt.plot(time, measurement_data_avg_interpolation, color='red', linestyle='-', label="Air intérieur", zorder=1)
             ax = plt.gca()
             ax.vlines(3110400, 0, 1, color='red', linestyle='--', transform=ax.get_xaxis_transform(), label='Fonctionnement normal des aérotherme')
+            # Compute mean absolute error
+            mae_nan = np.abs(measurement_data_avg_interpolation - T[:, 0])
+            mae_nan = mae_nan[~np.isnan(mae_nan)]
+            mae = np.mean(mae_nan)
+            print(f"Average |Sim - Experimental| = {mae:.2f} °C")
         
         # Interpolate outdoor temperature to simulation time
         outdoor_temp_interp = np.interp(time, self.simulation_time_in_seconds, self.outdoor_temperature_data)
