@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 import datetime as dt
+from matplotlib.dates import DateFormatter, AutoDateLocator
 
 def get_experimental_data():
     script_directory = os.path.dirname(os.path.abspath(__file__))
@@ -122,7 +123,7 @@ class ThermalCircuit:
         return C, G, G_fan_on
     
     # Simulate with explicit Euler
-    def simulate(self, T0=None, dt=120, total_time=108094*60):
+    def simulate(self, T0=None, dt=50, total_time=108094*60):
         """
         Simule la température des nodes dans le circuit thermique en bonds de 2 minutes.
         T0: Initial temperature vector [°C]. If None, uses experimental data average at t=0.
@@ -189,23 +190,25 @@ class ThermalCircuit:
         return T, time, heater_on
     
     def show_temperature_graph(self, T, time, heater_on, dates_axis=True, compare_with_experimental=True):
+
         plt.figure(figsize=(8, 5))
         for i in range(self.n_nodes):
             if self.node_names[i]:
                 plt.plot(time, T[:, i], label=f"{self.node_names[i]} (Simulation)")
                 if i in [t[0] for t in self.heated_nodes]:
                     plt.fill_between(time, T[:, i], y2=0, where=heater_on, color='red', alpha=0.1, zorder=2, label="Aérotherme en marche (Simulation)")
+
         if dates_axis:
-            date_ticks = self.simulation_time_in_dates
-            indices = np.linspace(0, len(date_ticks) - 1, 10, dtype=int)
-            date_labels = [date_ticks[i].strftime('%Y-%m-%d') for i in indices]
-            plt.xticks(ticks=time[indices], labels=date_labels)
+            date_ticks = np.array(self.simulation_time_in_dates)
+            n_ticks = 10
+            date_idx = np.linspace(0, len(date_ticks) - 1, n_ticks, dtype=int)
+            date_labels = [pd.Timestamp(date_ticks[i]).strftime('%Y-%m-%d') for i in date_idx]
+            time_pos = np.linspace(time[0], time[-1], n_ticks)
+            plt.xticks(ticks=time_pos, labels=date_labels)
             plt.xlabel("Temps (dates)")
-
-
-
         else:
             plt.xlabel("Temps (secondes)")
+
         if compare_with_experimental:
             measurement_data_avg_interpolation = np.interp(time, self.simulation_time_in_seconds, self.measurement_data_df["Total_Average"])
             plt.plot(time, measurement_data_avg_interpolation, color='red', linestyle='-', label="Air intérieur", zorder=1)
@@ -216,7 +219,7 @@ class ThermalCircuit:
             mae_nan = mae_nan[~np.isnan(mae_nan)]
             mae = np.mean(mae_nan)
             print(f"Average |Sim - Experimental| = {mae:.2f} °C")
-        
+
         # Interpolate outdoor temperature to simulation time
         outdoor_temp_interp = np.interp(time, self.simulation_time_in_seconds, self.outdoor_temperature_data)
         plt.plot(time, outdoor_temp_interp, color='cyan', linestyle='-', label="Extérieur", zorder=2)
