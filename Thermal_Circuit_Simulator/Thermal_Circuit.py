@@ -189,7 +189,7 @@ class ThermalCircuit:
         # Return both T and time vector
         return T, time, heater_on
     
-    def show_temperature_graph(self, T, time, heater_on, dates_axis=True, compare_with_experimental=True):
+    def show_temperature_graph(self, T, time, heater_on, dates_axis=True, compare_with_experimental=True, Node_to_compare = 5):
 
         plt.figure(figsize=(8, 5))
         for i in range(self.n_nodes):
@@ -215,9 +215,9 @@ class ThermalCircuit:
             ax = plt.gca()
             ax.vlines(3110400, 0, 1, color='red', linestyle='--', transform=ax.get_xaxis_transform(), label='Fonctionnement normal des aérotherme')
             # Compute mean absolute error
-            mae_nan = np.abs(measurement_data_avg_interpolation - T[:, 0])
+            mae_nan = np.abs(measurement_data_avg_interpolation - T[:, Node_to_compare])
             mae_nan = mae_nan[~np.isnan(mae_nan)]
-            mae = np.mean(mae_nan)
+            mae = np.mean(mae_nan) 
             print(f"Average |Sim - Experimental| = {mae:.2f} °C")
 
         # Interpolate outdoor temperature to simulation time
@@ -238,7 +238,7 @@ if __name__ == "__main__":
     node_exterieur = tc.add_outdoor_node()
     node_sol_bottom = tc.add_outdoor_node()
     node_sol_side = tc.add_outdoor_node()
-    node_isolant_side = tc.add_node(C=2176717.4)#ADDED C ne 0 
+    node_isolant_side = tc.add_node(C=2176717.4)
     node_beton_side = tc.add_node(C=1.109*10**8)
     node_air = tc.add_node(C=200000, name="Air Intérieur")
     node_beton_sol = tc.add_node(C=1.1379*10**8)
@@ -248,7 +248,7 @@ if __name__ == "__main__":
     # Set les resistances entre les nodes en [K/W]
     tc.set_resistance(node_sol_side, node_isolant_side, R=0.0775)
     tc.set_resistance(node_isolant_side, node_beton_side, R=0.0783525)
-    tc.set_resistance(node_air, node_beton_side, R=0.0032785, R_Fan_On=0.001641)#ADDED R est la somme de Beton->Thermocouple->Air
+    tc.set_resistance(node_air, node_beton_side, R=0.0032785, R_Fan_On=0.001641)
     tc.set_resistance(node_air, node_beton_sol, R=0.01611835, R_Fan_On=0.00179635)
     tc.set_resistance(node_beton_sol, node_sol_bottom, R=0.00071835)
     tc.set_resistance(node_air, node_plaque, R=0.0021578355, R_Fan_On=0.0010790355)
@@ -256,10 +256,12 @@ if __name__ == "__main__":
     tc.set_resistance(node_plaque, node_exterieur, R=0.0013370355)
 
     # # Les heated node gets q[W] injected si la condition en temps(t) et en température(T) is Trues
-    tc.set_heated_node(node_air, q=36000*0.60, condition=lambda t, T: ((T[node_exterieur] < 0) and (t < 3110400)))
-    tc.set_heated_node(node_air, q=46000*0.60, condition=lambda t, T: ((T[node_exterieur] < 0) and (t > 3110400)))
-    # TODO find les bonnes conditions et les bonnes puissances
-
+    efficacite_thermique=0.44 # %
+    puissance_full = 60000 # kW
+    puissance_not_full = 50000 # kW
+    tc.set_heated_node(node_air, q=puissance_not_full*efficacite_thermique, condition=lambda t, T: ((T[node_exterieur] < 0) and (t < 3110400)))
+    tc.set_heated_node(node_air, q=puissance_full*efficacite_thermique, condition=lambda t, T: ((T[node_exterieur] < 0) and (t > 3110400)))
+ 
     # Simu
     Temp, Time, Heater = tc.simulate()
 
