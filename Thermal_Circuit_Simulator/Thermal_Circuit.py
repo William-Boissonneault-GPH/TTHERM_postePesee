@@ -4,6 +4,7 @@ import matplotlib.pyplot as plt
 import os
 from pathlib import Path
 import datetime as dt
+from matplotlib.dates import DateFormatter, AutoDateLocator
 
 def get_experimental_data():
     script_directory = os.path.dirname(os.path.abspath(__file__))
@@ -122,7 +123,7 @@ class ThermalCircuit:
         return C, G, G_fan_on
     
     # Simulate with explicit Euler
-    def simulate(self, T0=None, dt=120, total_time=108094*60):
+    def simulate(self, T0=None, dt=50, total_time=108094*60):
         """
         Simule la température des nodes dans le circuit thermique en bonds de 2 minutes.
         T0: Initial temperature vector [°C]. If None, uses experimental data average at t=0.
@@ -181,33 +182,44 @@ class ThermalCircuit:
         # Last step: copy heater state
         heater_on[-1] = heater_on[-2]
 
+        # Compute Heater On Time
+        dt = time[1] - time[0]  # infer dt from returned data
+        total_on_time = np.sum(heater_on) * dt
+        print(f"Heater ON time = {total_on_time/3600:.2f} hours")
         # Return both T and time vector
         return T, time, heater_on
     
-    def show_temperature_graph(self, T, time, heater_on, dates_axis=True, compare_with_experimental=True):
+    def show_temperature_graph(self, T, time, heater_on, dates_axis=True, compare_with_experimental=True, Node_to_compare = 5):
+
         plt.figure(figsize=(8, 5))
         for i in range(self.n_nodes):
             if self.node_names[i]:
                 plt.plot(time, T[:, i], label=f"{self.node_names[i]} (Simulation)")
                 if i in [t[0] for t in self.heated_nodes]:
                     plt.fill_between(time, T[:, i], y2=0, where=heater_on, color='red', alpha=0.1, zorder=2, label="Aérotherme en marche (Simulation)")
+
         if dates_axis:
-            date_ticks = self.simulation_time_in_dates
-            indices = np.linspace(0, len(date_ticks) - 1, 10, dtype=int)
-            date_labels = [date_ticks[i].strftime('%Y-%m-%d') for i in indices]
-            plt.xticks(ticks=time[indices], labels=date_labels)
+            date_ticks = np.array(self.simulation_time_in_dates)
+            n_ticks = 10
+            date_idx = np.linspace(0, len(date_ticks) - 1, n_ticks, dtype=int)
+            date_labels = [pd.Timestamp(date_ticks[i]).strftime('%Y-%m-%d') for i in date_idx]
+            time_pos = np.linspace(time[0], time[-1], n_ticks)
+            plt.xticks(ticks=time_pos, labels=date_labels)
             plt.xlabel("Temps (dates)")
-
-
-
         else:
             plt.xlabel("Temps (secondes)")
+
         if compare_with_experimental:
             measurement_data_avg_interpolation = np.interp(time, self.simulation_time_in_seconds, self.measurement_data_df["Total_Average"])
             plt.plot(time, measurement_data_avg_interpolation, color='red', linestyle='-', label="Air intérieur", zorder=1)
             ax = plt.gca()
             ax.vlines(3110400, 0, 1, color='red', linestyle='--', transform=ax.get_xaxis_transform(), label='Fonctionnement normal des aérotherme')
-        
+            # Compute mean absolute error
+            mae_nan = np.abs(measurement_data_avg_interpolation - T[:, Node_to_compare])
+            mae_nan = mae_nan[~np.isnan(mae_nan)]
+            mae = np.mean(mae_nan) 
+            print(f"Average |Sim - Experimental| = {mae:.2f} °C")
+
         # Interpolate outdoor temperature to simulation time
         outdoor_temp_interp = np.interp(time, self.simulation_time_in_seconds, self.outdoor_temperature_data)
         plt.plot(time, outdoor_temp_interp, color='cyan', linestyle='-', label="Extérieur", zorder=2)
@@ -226,7 +238,7 @@ if __name__ == "__main__":
     node_exterieur = tc.add_outdoor_node()
     node_sol_bottom = tc.add_outdoor_node()
     node_sol_side = tc.add_outdoor_node()
-    node_isolant_side = tc.add_node(C=42411)#ADDED C ne 0 
+    node_isolant_side = tc.add_node(C=2176717.4)
     node_beton_side = tc.add_node(C=1.109*10**8)
     node_air = tc.add_node(C=200000, name="Air Intérieur")
     node_beton_sol = tc.add_node(C=1.1379*10**8)
@@ -236,7 +248,7 @@ if __name__ == "__main__":
     # Set les resistances entre les nodes en [K/W]
     tc.set_resistance(node_sol_side, node_isolant_side, R=0.0775)
     tc.set_resistance(node_isolant_side, node_beton_side, R=0.0783525)
-    tc.set_resistance(node_air, node_beton_side, R=0.0032785, R_Fan_On=0.001641)#ADDED R est la somme de Beton->Thermocouple->Air
+    tc.set_resistance(node_air, node_beton_side, R=0.0032785, R_Fan_On=0.001641)
     tc.set_resistance(node_air, node_beton_sol, R=0.01611835, R_Fan_On=0.00179635)
     tc.set_resistance(node_beton_sol, node_sol_bottom, R=0.00071835)
     tc.set_resistance(node_air, node_plaque, R=0.0021578355, R_Fan_On=0.0010790355)
@@ -244,10 +256,12 @@ if __name__ == "__main__":
     tc.set_resistance(node_plaque, node_exterieur, R=0.0013370355)
 
     # # Les heated node gets q[W] injected si la condition en temps(t) et en température(T) is Trues
-    tc.set_heated_node(node_air, q=36000*0.60, condition=lambda t, T: ((T[node_exterieur] < 0) and (t < 3110400)))
-    tc.set_heated_node(node_air, q=46000*0.60, condition=lambda t, T: ((T[node_exterieur] < 0) and (t > 3110400)))
-    # TODO find les bonnes conditions et les bonnes puissances
-
+    efficacite_thermique=0.44 # %
+    puissance_full = 60000 # kW
+    puissance_not_full = 50000 # kW
+    tc.set_heated_node(node_air, q=puissance_not_full*efficacite_thermique, condition=lambda t, T: ((T[node_exterieur] < 0) and (t < 3110400)))
+    tc.set_heated_node(node_air, q=puissance_full*efficacite_thermique, condition=lambda t, T: ((T[node_exterieur] < 0) and (t > 3110400)))
+ 
     # Simu
     Temp, Time, Heater = tc.simulate()
 
