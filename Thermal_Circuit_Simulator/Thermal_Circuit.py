@@ -204,10 +204,11 @@ class ThermalCircuit:
             date_idx = np.linspace(0, len(date_ticks) - 1, n_ticks, dtype=int)
             date_labels = [pd.Timestamp(date_ticks[i]).strftime('%Y-%m-%d') for i in date_idx]
             time_pos = np.linspace(time[0], time[-1], n_ticks)
-            plt.xticks(ticks=time_pos, labels=date_labels)
-            plt.xlabel("Temps (dates)")
+            plt.xticks(ticks=time_pos, labels=date_labels, fontsize=15)
+            plt.xlabel("Temps (dates)", fontsize=20)
         else:
-            plt.xlabel("Temps (secondes)")
+            plt.xlabel("Temps (secondes)", fontsize=20)
+        plt.yticks(fontsize=20)
 
         if compare_with_experimental:
             measurement_data_avg_interpolation = np.interp(time, self.simulation_time_in_seconds, self.measurement_data_df["Total_Average"])
@@ -224,9 +225,9 @@ class ThermalCircuit:
         outdoor_temp_interp = np.interp(time, self.simulation_time_in_seconds, self.outdoor_temperature_data)
         plt.plot(time, outdoor_temp_interp, color='cyan', linestyle='-', label="Extérieur", zorder=2)
 
-        plt.ylabel("Température (°C)")
+        plt.ylabel("Température (°C)", fontsize=25)
         plt.grid(True)
-        plt.legend(loc=3)
+        plt.legend(loc=3, fontsize=15)
         plt.tight_layout()
         plt.show()
     
