@@ -1,10 +1,12 @@
+"""
+Nécessite l'installation de numpy, pandas et matplotlib :
+    $pip install numpy pandas matplotlib
+"""
+
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 import os
-from pathlib import Path
-import datetime as dt
-from matplotlib.dates import DateFormatter, AutoDateLocator
 
 def get_experimental_data():
     """
@@ -135,7 +137,7 @@ class ThermalCircuit:
 
         return C, G, G_fan_on
     
-    def simulate(self, T0=None, dt=120, total_time=108094*60):
+    def simulate(self, T0=None, dt=10, total_time=108094*60):
         """
         Simule la température des nodes dans le circuit thermique en bonds de dt.
         T0: Initial temperature vector [°C]. If None, uses experimental data average at t=0.
